@@ -59,8 +59,8 @@ class ResText(nn.Module):
         self.linear = nn.Linear(KN, C)
         self.dropout = nn.Dropout(0.1)
 
-    def forward(self, text):
-        out = self.dropout(self.embed(text)).transpose(1, 2)
+    def forward(self, word):
+        out = self.dropout(self.embed(word)).transpose(1, 2)
         out = self.conv1(out)
         out = self.layer1(out)
         out = self.layer2(out)

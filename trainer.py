@@ -9,7 +9,12 @@ class Trainer:
         self.criterion = nn.CrossEntropyLoss()
         self._clip_norm = args.clip_norm
         self.params = filter(lambda p: p.requires_grad, model.parameters())
-        self.optimizer = torch.optim.Adam(self.params, lr=args.lr, weight_decay=args.decay)
+        if args.optimizer == 'sgd':
+            self.optimizer = torch.optim.SGD(self.params, lr=args.lr, momentum=0.9, weight_decay=args.decay)
+        elif args.optimizer == 'adam':
+            self.optimizer = torch.optim.Adam(self.params, lr=args.lr, weight_decay=args.decay)
+        else:
+            raise ValueError
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, args.num_epoch)
 
     def lr_scheduler_step(self):
@@ -32,7 +37,7 @@ class Trainer:
 
     def train(self, inputs, targets):
         self.optimizer.zero_grad()
-        outputs = self.model(inputs)
+        outputs = self.model(*inputs)
         loss = self.criterion(outputs, targets)
         loss.backward()
         nn.utils.clip_grad_norm_(self.params, self._clip_norm)
@@ -40,6 +45,6 @@ class Trainer:
         return outputs, loss
 
     def evaluate(self, inputs, targets):
-        outputs = self.model(inputs)
+        outputs = self.model(*inputs)
         loss = self.criterion(outputs, targets)
         return outputs, loss

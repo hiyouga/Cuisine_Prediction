@@ -10,7 +10,7 @@ import datetime
 import numpy as np
 from trainer import Trainer
 from data_utils import load_data
-from models import textcnn, textrnn, restext
+from models import textcnn, textrnn, restext, dualtextcnn
 
 
 class Instructor:
@@ -24,7 +24,13 @@ class Instructor:
         self._print_args()
         dataloaders = load_data(batch_size=self.args.batch_size)
         self.train_dataloader, self.dev_dataloader, self.test_dataloader, self.tokenizer, embedding_matrix = dataloaders
-        configs = {'num_classes': len(self.tokenizer.label_dict), 'embedding_matrix': embedding_matrix}
+        configs = {
+            'num_classes': len(self.tokenizer.vocab['label']),
+            'phrase_num': len(self.tokenizer.vocab['phrase']),
+            'word_maxlen': self.tokenizer.maxlen['word'],
+            'phrase_maxlen': self.tokenizer.maxlen['phrase'],
+            'embedding_matrix': embedding_matrix
+        }
         self.logger.info('=> creating model')
         self.trainer = Trainer(self.args.model_class(configs), self.args)
         self.trainer.to(self.args.device)
@@ -49,7 +55,8 @@ class Instructor:
         n_batch = len(dataloader)
         self.trainer.train_mode()
         for i_batch, sample_batched in enumerate(dataloader):
-            inputs, targets = sample_batched['text'].to(self.args.device), sample_batched['target'].to(self.args.device)
+            inputs = [sample_batched[col].to(self.args.device) for col in self.args.inputs_cols]
+            targets = sample_batched['target'].to(self.args.device)
             outputs, loss = self.trainer.train(inputs, targets)
             train_loss += loss.item() * targets.size(0)
             n_correct += (torch.argmax(outputs, -1) == targets).sum().item()
@@ -68,11 +75,12 @@ class Instructor:
         self.trainer.eval_mode()
         with torch.no_grad():
             for i_batch, sample_batched in enumerate(dataloader):
-                inputs, targets = sample_batched['text'].to(self.args.device), sample_batched['target'].to(self.args.device)
+                inputs = [sample_batched[col].to(self.args.device) for col in self.args.inputs_cols]
+                targets = sample_batched['target'].to(self.args.device)
                 outputs, loss = self.trainer.evaluate(inputs, targets)
                 if inference:
-                    all_cid.extend(sample_batched['cid'])
-                    all_pred.extend([self.tokenizer.label_dict.id_to_word(pred.item()) for pred in torch.argmax(outputs, -1)])
+                    all_cid.extend(sample_batched['cid'].tolist())
+                    all_pred.extend([self.tokenizer.vocab['label'].id_to_word(pred.item()) for pred in torch.argmax(outputs, -1)])
                 else:
                     val_loss += loss.item() * targets.size(0)
                     n_correct += (torch.argmax(outputs, -1) == targets).sum().item()
@@ -110,15 +118,27 @@ class Instructor:
 
 if __name__ == '__main__':
 
-    model_classes = {'textcnn': textcnn, 'textrnn': textrnn, 'restext': restext}
+    model_classes = {
+        'textcnn': textcnn,
+        'textrnn': textrnn,
+        'restext': restext,
+        'dualtextcnn': dualtextcnn
+    }
+    input_colses = {
+        'textcnn': ['word'],
+        'textrnn': ['word'],
+        'restext': ['word'],
+        'dualtextcnn': ['word', 'phrase', 'word_pos', 'phrase_pos']
+    }
     parser = argparse.ArgumentParser(description='Trainer', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ''' model '''
     parser.add_argument('--model_name', type=str, default='textcnn', choices=model_classes.keys(), help='Classifier model architecture.')
     ''' optimization '''
+    parser.add_argument('--optimizer', type=str, default='adam', choices=['sgd', 'adam'], help='Optimizer.')
     parser.add_argument('--num_epoch', type=int, default=50, help='Number of epochs to train.')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size.')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate.')
-    parser.add_argument('--decay', type=float, default=1e-5, help='Weight decay (L2 penalty).')
+    parser.add_argument('--decay', type=float, default=1e-4, help='Weight decay (L2 penalty).')
     parser.add_argument('--clip_norm', type=int, default=20, help='Maximum norm of gradients.')
     ''' environment '''
     parser.add_argument('--device', type=str, default=None, choices=['cpu', 'cuda'], help='Selected device.')
@@ -128,6 +148,7 @@ if __name__ == '__main__':
     parser.add_argument('--no_backend', default=False, action='store_true', help='Use frontend matplotlib.')
     args = parser.parse_args()
     args.model_class = model_classes[args.model_name]
+    args.inputs_cols = input_colses[args.model_name]
     args.log_name = f"{args.model_name}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')[2:]}.log"
     args.timestamp = args.timestamp if args.timestamp else str(int(time.time())) + format(random.randint(0, 999), '03')
     args.seed = args.seed if args.seed else random.randint(0, 2**32-1)

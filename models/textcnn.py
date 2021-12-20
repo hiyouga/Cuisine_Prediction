@@ -23,8 +23,8 @@ class TextCNN(nn.Module):
         self.linear = nn.Linear(len(KS) * KN, C)
         self.dropout = nn.Dropout(0.1)
 
-    def forward(self, text):
-        word_emb = self.dropout(self.embed(text))
+    def forward(self, word):
+        word_emb = self.dropout(self.embed(word))
         maxpool_out = list()
         for conv in self.conv:
             cnn_out_i = conv(word_emb.transpose(1, 2))

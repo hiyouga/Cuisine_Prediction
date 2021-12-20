@@ -46,22 +46,36 @@ class Vocab:
 
 class Tokenizer:
 
-    def __init__(self, vocab, label_dict, lower):
-        self.vocab = vocab
-        self.label_dict = label_dict
-        self.maxlen = 128
+    def __init__(self, word_vocab, phrase_vocab, label_vocab, lower):
+        self.vocab = {
+            'word': word_vocab,
+            'phrase': phrase_vocab,
+            'label': label_vocab
+        }
+        self.maxlen = {
+            'word': 128,
+            'phrase': 64,
+            'label': -1
+        }
         self.lower = lower
 
     @classmethod
     def from_files(cls, fnames, lower=True):
-       all_tokens = set()
-       labels = set()
-       for fname in fnames:
-           fdata = json.load(open(os.path.join('data', fname), 'r', encoding='utf-8'))
-           for data in fdata.values():
-               all_tokens.update([token.lower() if lower else token for token in (' '.join(data['ingredients'])).split()])
-               labels.add(data['cuisine'])
-       return cls(vocab=Vocab(all_tokens), label_dict=Vocab(labels, add_pad=False, add_unk=False), lower=lower)
+        all_words = set()
+        all_phrase = set()
+        all_label = set()
+        for fname in fnames:
+            fdata = json.load(open(os.path.join('data', fname), 'r', encoding='utf-8'))
+            for data in fdata.values():
+                words = (' '.join(data['ingredients'])).split()
+                phrases = data['ingredients']
+                all_words.update([w.lower() if lower else w for w in words])
+                all_phrase.update([p.lower() if lower else p for p in phrases])
+                all_label.add(data['cuisine'])
+        return cls(word_vocab=Vocab(all_words),
+                   phrase_vocab=Vocab(all_phrase),
+                   label_vocab=Vocab(all_label, add_pad=False, add_unk=False),
+                   lower=lower)
 
     @staticmethod
     def pad_sequence(sequence, pad_id, maxlen, dtype='int64', padding='post', truncating='post'):
@@ -77,12 +91,25 @@ class Tokenizer:
             x[-len(trunc):] = trunc
         return x
 
-    def to_sequence(self, text, reverse=False, padding='post', truncating='post'):
-        tokens = [token.lower() if self.lower else token for token in text.split()]
-        sequence = [self.vocab.word_to_id(t) for t in tokens]
+    def to_sequence(self, tokens, vocab_name, reverse=False, padding='post', truncating='post'):
+        sequence = [self.vocab[vocab_name].word_to_id(t.lower() if self.lower else t) for t in tokens]
         if reverse:
             sequence.reverse()
-        return self.pad_sequence(sequence, pad_id=self.vocab.pad_id, maxlen=self.maxlen, padding=padding, truncating=truncating)
+        return self.pad_sequence(sequence,
+                                 pad_id=self.vocab[vocab_name].pad_id,
+                                 maxlen=self.maxlen[vocab_name],
+                                 padding=padding,
+                                 truncating=truncating)
+
+    def position_sequence(self, length, vocab_name, reverse=False, padding='post', truncating='post'):
+        sequence = list(range(1, length+1))
+        if reverse:
+            sequence.reverse()
+        return self.pad_sequence(sequence,
+                                 pad_id=0,
+                                 maxlen=self.maxlen[vocab_name],
+                                 padding=padding,
+                                 truncating=truncating)
 
 
 class FoodDataset(Dataset):
@@ -97,10 +124,15 @@ class FoodDataset(Dataset):
             dataset = list()
             fdata = json.load(open(os.path.join('data', fname), 'r', encoding='utf-8'))
             for cid, data in fdata.items():
+                words = (' '.join(data['ingredients'])).split()
+                phrases = data['ingredients']
                 dataset.append({
-                    'cid': cid,
-                    'text': tokenizer.to_sequence(' '.join(data['ingredients'])),
-                    'target': tokenizer.label_dict.word_to_id(data['cuisine']) if split != 'test' else 0
+                    'cid': int(cid),
+                    'word': tokenizer.to_sequence(words, vocab_name='word'),
+                    'phrase': tokenizer.to_sequence(phrases, vocab_name='phrase'),
+                    'word_pos': tokenizer.position_sequence(len(words), vocab_name='word'),
+                    'phrase_pos': tokenizer.position_sequence(len(phrases), vocab_name='phrase'),
+                    'target': tokenizer.vocab['label'].word_to_id(data['cuisine']) if split != 'test' else 0
                 })
             pickle.dump(dataset, open(cache_file, 'wb'))
         self._dataset = dataset
@@ -159,7 +191,7 @@ def build_tokenizer(fnames):
 
 def load_data(batch_size):
     tokenizer = build_tokenizer(fnames=['train.json', 'dev.json'])
-    embedding_matrix = build_embedding_matrix(tokenizer.vocab)
+    embedding_matrix = build_embedding_matrix(tokenizer.vocab['word'])
     trainset = FoodDataset('train.json', tokenizer, split='train')
     devset = FoodDataset('dev.json', tokenizer, split='dev')
     testset = FoodDataset('test.json', tokenizer, split='test')
