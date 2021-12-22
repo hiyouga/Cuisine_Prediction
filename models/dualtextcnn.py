@@ -43,12 +43,12 @@ class DualTextCNN(nn.Module):
         phrase_emb = self.dropout(self.phrase_embed(phrase))
         word_pos = self.dropout(self.word_pos_embed(word_pos))
         phrase_pos = self.dropout(self.phrase_pos_embed(phrase_pos))
-        word_feat = torch.cat((word_emb, word_pos), dim=-1)
-        phrase_feat = torch.cat((phrase_emb, phrase_pos), dim=-1)
+        word_feat = torch.cat((word_emb, word_pos), dim=-1).transpose(1, 2)
+        phrase_feat = torch.cat((phrase_emb, phrase_pos), dim=-1).transpose(1, 2)
         maxpool_out = list()
         for word_conv, phrase_conv in zip(self.word_conv, self.phrase_conv):
-            word_out_i = word_conv(word_feat.transpose(1, 2))
-            phrase_out_i = phrase_conv(phrase_feat.transpose(1, 2))
+            word_out_i = word_conv(word_feat)
+            phrase_out_i = phrase_conv(phrase_feat)
             word_maxpool_i = F.max_pool1d(word_out_i, word_out_i.size(-1)).squeeze(-1)
             phrase_maxpool_i = F.max_pool1d(phrase_out_i, phrase_out_i.size(-1)).squeeze(-1)
             maxpool_out.extend([word_maxpool_i, phrase_maxpool_i])
@@ -58,4 +58,4 @@ class DualTextCNN(nn.Module):
 
 
 def dualtextcnn(configs):
-    return DualTextCNN(256, [3,4,5], configs)
+    return DualTextCNN(256, [1,3,5], configs)

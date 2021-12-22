@@ -10,7 +10,7 @@ import datetime
 import numpy as np
 from trainer import Trainer
 from data_utils import load_data
-from models import textcnn, textrnn, restext, dualtextcnn
+from models import textcnn, textrnn, restext, dualtextcnn, textcnn_attn
 
 
 class Instructor:
@@ -68,26 +68,26 @@ class Instructor:
             print()
         return train_loss / n_train, n_correct / n_train
 
+    @torch.no_grad()
     def _validate(self, dataloader, inference=False):
         val_loss, n_correct, n_val = 0, 0, 0
         all_cid, all_pred = list(), list()
         n_batch = len(dataloader)
         self.trainer.eval_mode()
-        with torch.no_grad():
-            for i_batch, sample_batched in enumerate(dataloader):
-                inputs = [sample_batched[col].to(self.args.device) for col in self.args.inputs_cols]
-                targets = sample_batched['target'].to(self.args.device)
-                outputs, loss = self.trainer.evaluate(inputs, targets)
-                if inference:
-                    all_cid.extend(sample_batched['cid'].tolist())
-                    all_pred.extend([self.tokenizer.vocab['label'].id_to_word(pred.item()) for pred in torch.argmax(outputs, -1)])
-                else:
-                    val_loss += loss.item() * targets.size(0)
-                    n_correct += (torch.argmax(outputs, -1) == targets).sum().item()
-                    n_val += targets.size(0)
-                if not self.args.no_bar:
-                    ratio = int((i_batch+1)*50/n_batch) # process bar
-                    print(f"[{'>'*ratio}{' '*(50-ratio)}] {i_batch+1}/{n_batch} {(i_batch+1)*100/n_batch:.2f}%", end='\r')
+        for i_batch, sample_batched in enumerate(dataloader):
+            inputs = [sample_batched[col].to(self.args.device) for col in self.args.inputs_cols]
+            targets = sample_batched['target'].to(self.args.device)
+            outputs, loss = self.trainer.evaluate(inputs, targets)
+            if inference:
+                all_cid.extend(sample_batched['cid'].tolist())
+                all_pred.extend([self.tokenizer.vocab['label'].id_to_word(pred.item()) for pred in torch.argmax(outputs, -1)])
+            else:
+                val_loss += loss.item() * targets.size(0)
+                n_correct += (torch.argmax(outputs, -1) == targets).sum().item()
+                n_val += targets.size(0)
+            if not self.args.no_bar:
+                ratio = int((i_batch+1)*50/n_batch) # process bar
+                print(f"[{'>'*ratio}{' '*(50-ratio)}] {i_batch+1}/{n_batch} {(i_batch+1)*100/n_batch:.2f}%", end='\r')
         if not self.args.no_bar:
             print()
         if inference:
@@ -111,9 +111,37 @@ class Instructor:
         torch.save(self.trainer.save_state_dict(), os.path.join('state_dict', f"{self.args.timestamp}.pt"))
         self.logger.info(f"model saved: {self.args.timestamp}.pt")
         all_cid, all_pred = self._validate(self.test_dataloader, inference=True)
-        with open(f"{self.args.model_name}_{best_record['val_acc']*100:.2f}.txt", 'w', encoding='utf-8') as f:
+        with open(f"{self.args.model_name}_{self.args.timestamp}_{best_record['val_acc']*100:.2f}.txt", 'w', encoding='utf-8') as f:
             f.write('\n'.join([f"{cid} {pred}" for cid, pred in zip(all_cid, all_pred)]))
-        self.logger.info(f"submission result saved: {self.args.model_name}_{best_record['val_acc']*100:.2f}.txt")
+        self.logger.info(f"submission result saved: {self.args.model_name}_{self.args.timestamp}_{best_record['val_acc']*100:.2f}.txt")
+
+    @torch.no_grad()
+    def ensemble(self):
+        n_batch = len(self.test_dataloader)
+        all_cid, all_output, all_pred = list(), list(), list()
+        self.trainer.eval_mode()
+        for i, checkpoint in enumerate(self.args.ensemble):
+            self.logger.info(f"Running {i+1}/{len(self.args.ensemble)} checkpoint...")
+            self.trainer.load_state_dict(torch.load(os.path.join('state_dict', f"{checkpoint}.pt"), map_location=self.args.device))
+            for i_batch, sample_batched in enumerate(self.test_dataloader):
+                inputs = [sample_batched[col].to(self.args.device) for col in self.args.inputs_cols]
+                targets = sample_batched['target'].to(self.args.device)
+                outputs, loss = self.trainer.evaluate(inputs, targets)
+                if i == 0:
+                    all_cid.extend(sample_batched['cid'].tolist())
+                    all_output.append(outputs)
+                else:
+                    all_output[i_batch] += outputs
+                if not self.args.no_bar:
+                    ratio = int((i_batch+1)*50/n_batch) # process bar
+                    print(f"[{'>'*ratio}{' '*(50-ratio)}] {i_batch+1}/{n_batch} {(i_batch+1)*100/n_batch:.2f}%", end='\r')
+            if not self.args.no_bar:
+                print()
+        for i_batch in range(n_batch):
+            all_pred.extend([self.tokenizer.vocab['label'].id_to_word(pred.item()) for pred in torch.argmax(all_output[i_batch], -1)])
+        with open(f"ensemble_{len(self.args.ensemble)}_{self.args.timestamp}.txt", 'w', encoding='utf-8') as f:
+            f.write('\n'.join([f"{cid} {pred}" for cid, pred in zip(all_cid, all_pred)]))
+        self.logger.info(f"submission result saved: ensemble_{len(self.args.ensemble)}_{self.args.timestamp}.txt")
 
 
 if __name__ == '__main__':
@@ -122,13 +150,15 @@ if __name__ == '__main__':
         'textcnn': textcnn,
         'textrnn': textrnn,
         'restext': restext,
-        'dualtextcnn': dualtextcnn
+        'dualtextcnn': dualtextcnn,
+        'textcnn_attn': textcnn_attn
     }
     input_colses = {
         'textcnn': ['word'],
         'textrnn': ['word'],
         'restext': ['word'],
-        'dualtextcnn': ['word', 'phrase', 'word_pos', 'phrase_pos']
+        'dualtextcnn': ['word', 'phrase', 'word_pos', 'phrase_pos'],
+        'textcnn_attn': ['word']
     }
     parser = argparse.ArgumentParser(description='Trainer', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ''' model '''
@@ -140,6 +170,8 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate.')
     parser.add_argument('--decay', type=float, default=1e-4, help='Weight decay (L2 penalty).')
     parser.add_argument('--clip_norm', type=int, default=20, help='Maximum norm of gradients.')
+    ''' ensemble '''
+    parser.add_argument('--ensemble', type=str, default=None, help='Models for ensembling.')
     ''' environment '''
     parser.add_argument('--device', type=str, default=None, choices=['cpu', 'cuda'], help='Selected device.')
     parser.add_argument('--seed', type=int, default=None, help='Random seed.')
@@ -149,6 +181,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args.model_class = model_classes[args.model_name]
     args.inputs_cols = input_colses[args.model_name]
+    args.ensemble = [int(e.strip()) for e in args.ensemble.split(',')] if args.ensemble else None
     args.log_name = f"{args.model_name}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')[2:]}.log"
     args.timestamp = args.timestamp if args.timestamp else str(int(time.time())) + format(random.randint(0, 999), '03')
     args.seed = args.seed if args.seed else random.randint(0, 2**32-1)
@@ -164,4 +197,7 @@ if __name__ == '__main__':
             os.mkdir(dir_name)
     warnings.simplefilter("ignore")
     ins = Instructor(args)
-    ins.run()
+    if args.ensemble:
+        ins.ensemble()
+    else:
+        ins.run()

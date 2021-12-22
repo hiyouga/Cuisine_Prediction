@@ -1,12 +1,12 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from .layers import NoQueryAttention
 
 
-class TextCNN(nn.Module):
+class TextCNN_Attn(nn.Module):
 
     def __init__(self, kernel_num, kernel_sizes, configs):
-        super(TextCNN, self).__init__()
+        super(TextCNN_Attn, self).__init__()
 
         WN, WD = configs['embedding_matrix'].shape
         KN = kernel_num
@@ -20,20 +20,21 @@ class TextCNN(nn.Module):
                 nn.ReLU(inplace=True),
             ) for K in KS
         ])
+        self.attention = NoQueryAttention(embed_dim=KN, score_function='scaled_dot_product', dropout=0.3)
         self.linear = nn.Linear(len(KS) * KN, C)
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(0.3)
 
     def forward(self, word):
         word_emb = self.dropout(self.embed(word)).transpose(1, 2)
-        maxpool_out = list()
+        attn_out = list()
         for conv in self.conv:
-            cnn_out_i = conv(word_emb)
-            maxpool_i = F.max_pool1d(cnn_out_i, cnn_out_i.size(-1)).squeeze(-1)
-            maxpool_out.append(maxpool_i)
-        maxpool_out = torch.cat(maxpool_out, dim=-1)
-        output = self.linear(self.dropout(maxpool_out))
+            cnn_out_i = conv(word_emb).transpose(1, 2)
+            attn_out_i, _ = self.attention(cnn_out_i)
+            attn_out.append(attn_out_i.squeeze(1))
+        attn_out = torch.cat(attn_out, dim=-1)
+        output = self.linear(self.dropout(attn_out))
         return output
 
 
-def textcnn(configs):
-    return TextCNN(256, [3,4,5], configs)
+def textcnn_attn(configs):
+    return TextCNN_Attn(256, [3,4,5], configs)
