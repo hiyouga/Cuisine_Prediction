@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from .layers import NoQueryAttention
 
 
 class TextCNN(nn.Module):
@@ -9,31 +9,54 @@ class TextCNN(nn.Module):
         super(TextCNN, self).__init__()
 
         WN, WD = configs['embedding_matrix'].shape
+        PL = configs['word_maxlen']+1
+        PD = configs['position_dim']
         KN = kernel_num
         KS = kernel_sizes
         C = configs['num_classes']
 
-        self.embed = nn.Embedding.from_pretrained(torch.tensor(configs['embedding_matrix'], dtype=torch.float))
+        self.word_embed = nn.Embedding.from_pretrained(torch.tensor(configs['embedding_matrix'], dtype=torch.float))
+        self.pos_embed = nn.Embedding(PL, PD, padding_idx=0)
         self.conv = nn.ModuleList([
             nn.Sequential(
-                nn.Conv1d(WD, KN, K, padding=K//2, bias=True),
+                nn.Conv1d(WD+PD, KN, K, padding=K//2, bias=True),
                 nn.ReLU(inplace=True),
             ) for K in KS
         ])
         self.linear = nn.Linear(len(KS) * KN, C)
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(configs['dropout'])
+        if configs['score_function'] is not None:
+            self.attention = NoQueryAttention(embed_dim=KN,
+                                              num_heads=configs['num_heads'],
+                                              score_function=configs['score_function'],
+                                              dropout=configs['dropout'])
+        else:
+            self.maxpool = nn.AdaptiveMaxPool1d(1)
 
-    def forward(self, word):
-        word_emb = self.dropout(self.embed(word)).transpose(1, 2)
-        maxpool_out = list()
+    def forward(self, word, word_pos):
+        word_emb = self.dropout(self.word_embed(word))
+        pos_emb = self.dropout(self.pos_embed(word_pos))
+        word_feat = torch.cat((word_emb, pos_emb), dim=-1).transpose(1, 2)
+        out = list()
         for conv in self.conv:
-            cnn_out_i = conv(word_emb)
-            maxpool_i = F.max_pool1d(cnn_out_i, cnn_out_i.size(-1)).squeeze(-1)
-            maxpool_out.append(maxpool_i)
-        maxpool_out = torch.cat(maxpool_out, dim=-1)
-        output = self.linear(self.dropout(maxpool_out))
-        return output
+            cnn_out_i = conv(word_feat)
+            if hasattr(self, 'attention'):
+                out_i = self.attention(cnn_out_i.transpose(1, 2)).squeeze(1)
+            else:
+                out_i = self.maxpool(cnn_out_i).squeeze(-1)
+            out.append(out_i)
+        out = torch.cat(out, dim=-1)
+        out = self.linear(self.dropout(out))
+        return out
 
 
-def textcnn(configs):
+def textcnn_64_345(configs):
+    return TextCNN(64, [3,4,5], configs)
+
+
+def textcnn_128_345(configs):
+    return TextCNN(128, [3,4,5], configs)
+
+
+def textcnn_256_345(configs):
     return TextCNN(256, [3,4,5], configs)

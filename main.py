@@ -3,6 +3,7 @@ import sys
 import time
 import torch
 import random
+import models
 import logging
 import argparse
 import warnings
@@ -10,7 +11,6 @@ import datetime
 import numpy as np
 from trainer import Trainer
 from data_utils import load_data
-from models import textcnn, textrnn, restext, dualtextcnn, textcnn_attn
 
 
 class Instructor:
@@ -29,7 +29,11 @@ class Instructor:
             'phrase_num': len(self.tokenizer.vocab['phrase']),
             'word_maxlen': self.tokenizer.maxlen['word'],
             'phrase_maxlen': self.tokenizer.maxlen['phrase'],
-            'embedding_matrix': embedding_matrix
+            'embedding_matrix': embedding_matrix,
+            'position_dim': args.position_dim,
+            'dropout': args.dropout,
+            'score_function': args.score_function,
+            'num_heads': args.num_heads
         }
         self.logger.info('=> creating model')
         self.trainer = Trainer(self.args.model_class(configs), self.args)
@@ -146,30 +150,35 @@ class Instructor:
 
 if __name__ == '__main__':
 
-    model_classes = {
-        'textcnn': textcnn,
-        'textrnn': textrnn,
-        'restext': restext,
-        'dualtextcnn': dualtextcnn,
-        'textcnn_attn': textcnn_attn
-    }
+    model_names = sorted(name for name in models.__dict__ if name.islower() and not name.startswith('__') and callable(models.__dict__[name]))
     input_colses = {
-        'textcnn': ['word'],
-        'textrnn': ['word'],
-        'restext': ['word'],
-        'dualtextcnn': ['word', 'phrase', 'word_pos', 'phrase_pos'],
-        'textcnn_attn': ['word']
+        'textcnn_64_345': ['word', 'word_pos'],
+        'textcnn_128_345': ['word', 'word_pos'],
+        'textcnn_256_345': ['word', 'word_pos'],
+        'textrnn_100': ['word', 'word_pos'],
+        'textgru_100': ['word', 'word_pos'],
+        'textgru_200': ['word', 'word_pos'],
+        'textgru_300': ['word', 'word_pos'],
+        'restext_128_1': ['word', 'word_pos'],
+        'restext_256_1': ['word', 'word_pos'],
+        'restext_256_2': ['word', 'word_pos'],
+        'dualtextcnn_128_345': ['word', 'phrase', 'word_pos', 'phrase_pos'],
+        'dualtextcnn_256_345': ['word', 'phrase', 'word_pos', 'phrase_pos']
     }
     parser = argparse.ArgumentParser(description='Trainer', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ''' model '''
-    parser.add_argument('--model_name', type=str, default='textcnn', choices=model_classes.keys(), help='Classifier model architecture.')
+    parser.add_argument('--model_name', type=str, default='textcnn_256_345', choices=model_names, help='Classifier model architecture.')
+    parser.add_argument('--position_dim', type=int, default=5, help='Dimension of position embedding.')
+    parser.add_argument('--score_function', type=str, default=None, help='Score function for attention layer.')
+    parser.add_argument('--num_heads', type=int, default=1, help='Number of heads in multihead attention layer.')
+    parser.add_argument('--dropout', type=float, default=0, help='Dropout rate.')
     ''' optimization '''
     parser.add_argument('--optimizer', type=str, default='adam', choices=['sgd', 'adam'], help='Optimizer.')
     parser.add_argument('--num_epoch', type=int, default=50, help='Number of epochs to train.')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size.')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate.')
     parser.add_argument('--decay', type=float, default=1e-4, help='Weight decay (L2 penalty).')
-    parser.add_argument('--clip_norm', type=int, default=20, help='Maximum norm of gradients.')
+    parser.add_argument('--clip_norm', type=int, default=50, help='Maximum norm of gradients.')
     ''' ensemble '''
     parser.add_argument('--ensemble', type=str, default=None, help='Models for ensembling.')
     ''' environment '''
@@ -179,7 +188,7 @@ if __name__ == '__main__':
     parser.add_argument('--no_bar', default=False, action='store_true', help='Disable process bar.')
     parser.add_argument('--no_backend', default=False, action='store_true', help='Use frontend matplotlib.')
     args = parser.parse_args()
-    args.model_class = model_classes[args.model_name]
+    args.model_class = models.__dict__[args.model_name]
     args.inputs_cols = input_colses[args.model_name]
     args.ensemble = [int(e.strip()) for e in args.ensemble.split(',')] if args.ensemble else None
     args.log_name = f"{args.model_name}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')[2:]}.log"

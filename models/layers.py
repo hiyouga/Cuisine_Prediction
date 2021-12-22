@@ -60,6 +60,7 @@ class DynamicLSTM(nn.Module):
             out_pack, (ht, ct) = self.RNN(x_emb_p, None)
         else:
             out_pack, ht = self.RNN(x_emb_p, None)
+            ct = None
         ''' unsort '''
         ht = ht[:, x_unsort_idx] # (num_directions * num_layers, batch_size, hidden_size)
         if self.only_use_last_hidden_state:
@@ -84,12 +85,13 @@ class MultiHeadAttention(nn.Module):
         output_dim: Output dimension.
         num_heads: Number of parallel attention heads.
         score_function: Function for computing attention scores. {dot_product, scaled_dot_product, mlp, bilinear}
-        dropout: Dropout probability on outputs.
+        dropout: Dropout probability on outputs. Default: 0
         bias: If True, adds bias to input/output projection layers. Default: True
         add_bias_kv: If True, add bias to the key and value sequences. Default: False
+        verbose: If True, output the attention score. Default: False
     """
     def __init__(self, embed_dim, hidden_dim=None, output_dim=None, num_heads=1,
-                 score_function='dot_product', dropout=0, bias=True, add_bias_kv=False):
+                 score_function='dot_product', dropout=0, bias=True, add_bias_kv=False, verbose=False):
         super(MultiHeadAttention, self).__init__()
         if hidden_dim is None:
             hidden_dim = embed_dim // num_heads
@@ -100,6 +102,7 @@ class MultiHeadAttention(nn.Module):
         self.num_heads = num_heads
         self.score_function = score_function
         self.scale = hidden_dim ** -0.5
+        self.verbose = verbose
 
         self.w_k = nn.Linear(embed_dim, num_heads * hidden_dim, bias=add_bias_kv)
         self.w_q = nn.Linear(embed_dim, num_heads * hidden_dim, bias=bias)
@@ -146,7 +149,7 @@ class MultiHeadAttention(nn.Module):
             qk = torch.cat((padded_q, padded_k), dim=-1) # (batch_size, q_len, k_len, num_heads, hidden_dim*2)
             attn = self.tanh(torch.einsum('bijnd,d->bijn', qk, self.attn_weight)) # (batch_size, q_len, k_len, num_heads)
         elif self.score_function == 'bilinear':
-            attn = torch.einsum('bind,dd,bjnd', q, self.attn_weight, k) # (batch_size, q_len, k_len, num_heads)
+            attn = torch.einsum('bind,dd,bjnd->bijn', q, self.attn_weight, k) # (batch_size, q_len, k_len, num_heads)
         else:
             raise ValueError
         if mask is not None:
@@ -158,7 +161,10 @@ class MultiHeadAttention(nn.Module):
         out = self.proj(out) # (batch_size, q_len, output_dim)
         out = self.dropout(out)
         out = self.layernorm(out)
-        return out, attn
+        if self.verbose:
+            return out, attn
+        else:
+            return out
 
 
 class NoQueryAttention(MultiHeadAttention):
