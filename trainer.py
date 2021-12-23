@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from amp import AMP
 
 
 class Trainer:
@@ -10,9 +11,9 @@ class Trainer:
         self._clip_norm = args.clip_norm
         self.params = filter(lambda p: p.requires_grad, model.parameters())
         if args.optimizer == 'sgd':
-            self.optimizer = torch.optim.SGD(self.params, lr=args.lr, momentum=0.9, weight_decay=args.decay)
+            self.optimizer = AMP(self.params, args.lr, args.epsilon, momentum=0.9, weight_decay=args.decay)
         elif args.optimizer == 'adam':
-            self.optimizer = torch.optim.Adam(self.params, lr=args.lr, weight_decay=args.decay)
+            self.optimizer = AMP(self.params, args.lr, args.epsilon, weight_decay=args.decay, base_optimizer=torch.optim.Adam)
         else:
             raise ValueError
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, args.num_epoch)

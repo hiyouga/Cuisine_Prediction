@@ -64,11 +64,11 @@ class DualTextCNN(nn.Module):
                 word_out_i = self.word_attention(word_out_i.transpose(1, 2)).squeeze(1)
                 phrase_out_i = self.phrase_attention(phrase_out_i.transpose(1, 2)).squeeze(1)
             else:
-                word_out_i = self.maxpool(word_out_i).squeeze(-1)
-                phrase_out_i = self.maxpool(phrase_out_i).squeeze(-1)
+                word_out_i = self.dropout(self.maxpool(word_out_i).squeeze(-1))
+                phrase_out_i = self.dropout(self.maxpool(phrase_out_i).squeeze(-1))
             out.extend([word_out_i, phrase_out_i])
         out = torch.cat(out, dim=-1)
-        out = self.linear(self.dropout(out))
+        out = self.linear(out)
         return out
 
 

@@ -1,6 +1,7 @@
 import os
 import json
 import pickle
+import random
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 
@@ -115,6 +116,7 @@ class Tokenizer:
 class FoodDataset(Dataset):
 
     def __init__(self, fname, tokenizer, split):
+        self.tokenizer = tokenizer
         cache_file = os.path.join('dats', f"{split}.dat")
         if os.path.exists(cache_file):
             print(f"loading dataset: {cache_file}")
@@ -124,21 +126,28 @@ class FoodDataset(Dataset):
             dataset = list()
             fdata = json.load(open(os.path.join('data', fname), 'r', encoding='utf-8'))
             for cid, data in fdata.items():
-                words = (' '.join(data['ingredients'])).split()
-                phrases = data['ingredients']
-                dataset.append({
-                    'cid': int(cid),
-                    'word': tokenizer.to_sequence(words, vocab_name='word'),
-                    'phrase': tokenizer.to_sequence(phrases, vocab_name='phrase'),
-                    'word_pos': tokenizer.position_sequence(len(words), vocab_name='word'),
-                    'phrase_pos': tokenizer.position_sequence(len(phrases), vocab_name='phrase'),
-                    'target': tokenizer.vocab['label'].word_to_id(data['cuisine']) if split != 'test' else 0
-                })
+                dataset.append([
+                    int(cid),
+                    data['ingredients'],
+                    tokenizer.vocab['label'].word_to_id(data['cuisine']) if split != 'test' else 0
+                ])
             pickle.dump(dataset, open(cache_file, 'wb'))
         self._dataset = dataset
 
     def __getitem__(self, index):
-        return self._dataset[index]
+        cid, phrases, label = self._dataset[index]
+        phrases = phrases[:]
+        if random.random() < 0.5:
+            random.shuffle(phrases)
+        words = (' '.join(phrases)).split()
+        return {
+            'cid': cid,
+            'word': self.tokenizer.to_sequence(words, vocab_name='word'),
+            'phrase': self.tokenizer.to_sequence(phrases, vocab_name='phrase'),
+            'word_pos': self.tokenizer.position_sequence(len(words), vocab_name='word'),
+            'phrase_pos': self.tokenizer.position_sequence(len(phrases), vocab_name='phrase'),
+            'target': label
+        }
 
     def __len__(self):
         return len(self._dataset)

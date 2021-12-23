@@ -80,8 +80,8 @@ class ResText(nn.Module):
         if hasattr(self, 'attention'):
             out = self.attention(out.transpose(1, 2)).squeeze(1)
         else:
-            out = self.maxpool(out).squeeze(-1)
-        out = self.linear(self.dropout(out))
+            out = self.dropout(self.maxpool(out).squeeze(-1))
+        out = self.linear(out)
         return out
 
 

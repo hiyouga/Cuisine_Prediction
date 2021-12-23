@@ -39,14 +39,14 @@ class TextCNN(nn.Module):
         word_feat = torch.cat((word_emb, pos_emb), dim=-1).transpose(1, 2)
         out = list()
         for conv in self.conv:
-            cnn_out_i = conv(word_feat)
+            cnn_out_i = self.dropout(conv(word_feat))
             if hasattr(self, 'attention'):
                 out_i = self.attention(cnn_out_i.transpose(1, 2)).squeeze(1)
             else:
-                out_i = self.maxpool(cnn_out_i).squeeze(-1)
+                out_i = self.dropout(self.maxpool(cnn_out_i).squeeze(-1))
             out.append(out_i)
         out = torch.cat(out, dim=-1)
-        out = self.linear(self.dropout(out))
+        out = self.linear(out)
         return out
 
 

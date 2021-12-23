@@ -174,6 +174,7 @@ if __name__ == '__main__':
     parser.add_argument('--dropout', type=float, default=0, help='Dropout rate.')
     ''' optimization '''
     parser.add_argument('--optimizer', type=str, default='adam', choices=['sgd', 'adam'], help='Optimizer.')
+    parser.add_argument('--epsilon', type=float, default=0, help='Perturbation radius for the AMP optimizer.')
     parser.add_argument('--num_epoch', type=int, default=50, help='Number of epochs to train.')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size.')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate.')

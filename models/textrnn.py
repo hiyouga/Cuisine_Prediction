@@ -37,8 +37,8 @@ class TextRNN(nn.Module):
         if hasattr(self, 'attention'):
             out = self.attention(out).squeeze(1)
         else:
-            out = out.sum(dim=1).div(text_len.float().unsqueeze(-1))
-        out = self.linear(self.dropout(out))
+            out = self.dropout(out.sum(dim=1).div(text_len.float().unsqueeze(-1)))
+        out = self.linear(out)
         return out
 
 
