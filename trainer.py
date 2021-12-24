@@ -37,12 +37,14 @@ class Trainer:
         return self.model.state_dict()
 
     def train(self, inputs, targets):
-        self.optimizer.zero_grad()
-        outputs = self.model(*inputs)
-        loss = self.criterion(outputs, targets)
-        loss.backward()
-        nn.utils.clip_grad_norm_(self.params, self._clip_norm)
-        self.optimizer.step()
+        def closure():
+            self.optimizer.zero_grad()
+            outputs = self.model(*inputs)
+            loss = self.criterion(outputs, targets)
+            loss.backward()
+            nn.utils.clip_grad_norm_(self.params, self._clip_norm)
+            return outputs, loss
+        outputs, loss = self.optimizer.step(closure)
         return outputs, loss
 
     def evaluate(self, inputs, targets):

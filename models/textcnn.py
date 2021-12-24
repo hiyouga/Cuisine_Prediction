@@ -58,5 +58,17 @@ def textcnn_128_345(configs):
     return TextCNN(128, [3,4,5], configs)
 
 
+def textcnn_256_135(configs):
+    return TextCNN(256, [1,3,5], configs)
+
+
+def textcnn_256_234(configs):
+    return TextCNN(256, [2,3,4], configs)
+
+
 def textcnn_256_345(configs):
     return TextCNN(256, [3,4,5], configs)
+
+
+def textcnn_512_345(configs):
+    return TextCNN(512, [3,4,5], configs)

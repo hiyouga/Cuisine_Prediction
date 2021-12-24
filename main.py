@@ -22,7 +22,7 @@ class Instructor:
         self.logger.addHandler(logging.StreamHandler(sys.stdout))
         self.logger.addHandler(logging.FileHandler(os.path.join('logs', args.log_name)))
         self._print_args()
-        dataloaders = load_data(batch_size=self.args.batch_size)
+        dataloaders = load_data(batch_size=args.batch_size, no_data_aug=args.no_data_aug)
         self.train_dataloader, self.dev_dataloader, self.test_dataloader, self.tokenizer, embedding_matrix = dataloaders
         configs = {
             'num_classes': len(self.tokenizer.vocab['label']),
@@ -36,9 +36,9 @@ class Instructor:
             'num_heads': args.num_heads
         }
         self.logger.info('=> creating model')
-        self.trainer = Trainer(self.args.model_class(configs), self.args)
-        self.trainer.to(self.args.device)
-        if self.args.device.type == 'cuda':
+        self.trainer = Trainer(args.model_class(configs), args)
+        self.trainer.to(args.device)
+        if args.device.type == 'cuda':
             self.logger.info(f"=> cuda memory allocated: {torch.cuda.memory_allocated(self.args.device.index)}")
 
     def _print_args(self):
@@ -155,6 +155,9 @@ if __name__ == '__main__':
         'textcnn_64_345': ['word', 'word_pos'],
         'textcnn_128_345': ['word', 'word_pos'],
         'textcnn_256_345': ['word', 'word_pos'],
+        'textcnn_512_345': ['word', 'word_pos'],
+        'textcnn_256_135': ['word', 'word_pos'],
+        'textcnn_256_234': ['word', 'word_pos'],
         'textrnn_100': ['word', 'word_pos'],
         'textgru_100': ['word', 'word_pos'],
         'textgru_200': ['word', 'word_pos'],
@@ -175,11 +178,12 @@ if __name__ == '__main__':
     ''' optimization '''
     parser.add_argument('--optimizer', type=str, default='adam', choices=['sgd', 'adam'], help='Optimizer.')
     parser.add_argument('--epsilon', type=float, default=0, help='Perturbation radius for the AMP optimizer.')
-    parser.add_argument('--num_epoch', type=int, default=50, help='Number of epochs to train.')
+    parser.add_argument('--num_epoch', type=int, default=100, help='Number of epochs to train.')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size.')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate.')
     parser.add_argument('--decay', type=float, default=1e-4, help='Weight decay (L2 penalty).')
     parser.add_argument('--clip_norm', type=int, default=50, help='Maximum norm of gradients.')
+    parser.add_argument('--no_data_aug', default=False, action='store_true', help='Disable data augmentation.')
     ''' ensemble '''
     parser.add_argument('--ensemble', type=str, default=None, help='Models for ensembling.')
     ''' environment '''

@@ -115,8 +115,9 @@ class Tokenizer:
 
 class FoodDataset(Dataset):
 
-    def __init__(self, fname, tokenizer, split):
+    def __init__(self, fname, tokenizer, split, no_data_aug):
         self.tokenizer = tokenizer
+        self.no_data_aug = no_data_aug
         cache_file = os.path.join('dats', f"{split}.dat")
         if os.path.exists(cache_file):
             print(f"loading dataset: {cache_file}")
@@ -136,9 +137,11 @@ class FoodDataset(Dataset):
 
     def __getitem__(self, index):
         cid, phrases, label = self._dataset[index]
-        phrases = phrases[:]
-        if random.random() < 0.5:
+        if not self.no_data_aug: # do data augmentation
+            phrases = phrases[:]
             random.shuffle(phrases)
+            if len(phrases) > 1:
+                phrases = phrases[:-1]
         words = (' '.join(phrases)).split()
         return {
             'cid': cid,
@@ -198,12 +201,12 @@ def build_tokenizer(fnames):
     return tokenizer
 
 
-def load_data(batch_size):
+def load_data(batch_size, no_data_aug):
     tokenizer = build_tokenizer(fnames=['train.json', 'dev.json'])
     embedding_matrix = build_embedding_matrix(tokenizer.vocab['word'])
-    trainset = FoodDataset('train.json', tokenizer, split='train')
-    devset = FoodDataset('dev.json', tokenizer, split='dev')
-    testset = FoodDataset('test.json', tokenizer, split='test')
+    trainset = FoodDataset('train.json', tokenizer, split='train', no_data_aug=no_data_aug)
+    devset = FoodDataset('dev.json', tokenizer, split='dev', no_data_aug=True)
+    testset = FoodDataset('test.json', tokenizer, split='test', no_data_aug=True)
     train_dataloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, pin_memory=True)
     dev_dataloader = DataLoader(devset, batch_size=batch_size, shuffle=False, pin_memory=True)
     test_dataloader = DataLoader(testset, batch_size=batch_size, shuffle=False, pin_memory=True)
