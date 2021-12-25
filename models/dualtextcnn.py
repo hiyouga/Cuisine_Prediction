@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .layers import NoQueryAttention
+from .layers import NoQueryAttention, mixup_process
 
 
 class DualTextCNN(nn.Module):
@@ -49,7 +49,7 @@ class DualTextCNN(nn.Module):
         else:
             self.maxpool = nn.AdaptiveMaxPool1d(1)
 
-    def forward(self, word, phrase, word_pos, phrase_pos):
+    def forward(self, word, phrase, word_pos, phrase_pos, lamda=None, indices=None):
         word_emb = self.dropout(self.word_embed(word))
         phrase_emb = self.dropout(self.phrase_embed(phrase))
         word_pos = self.dropout(self.word_pos_embed(word_pos))
@@ -68,6 +68,8 @@ class DualTextCNN(nn.Module):
                 phrase_out_i = self.dropout(self.maxpool(phrase_out_i).squeeze(-1))
             out.extend([word_out_i, phrase_out_i])
         out = torch.cat(out, dim=-1)
+        if lamda is not None:
+            out = mixup_process(out, lamda, indices)
         out = self.linear(out)
         return out
 

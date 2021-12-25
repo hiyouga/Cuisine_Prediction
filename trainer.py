@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 from amp import AMP
 
 
@@ -7,7 +8,8 @@ class Trainer:
 
     def __init__(self, model, args):
         self.model = model
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss(reduction='none')
+        self._mixup_alpha = args.mixup_alpha
         self._clip_norm = args.clip_norm
         self.params = filter(lambda p: p.requires_grad, model.parameters())
         if args.optimizer == 'sgd':
@@ -37,10 +39,16 @@ class Trainer:
         return self.model.state_dict()
 
     def train(self, inputs, targets):
+        if self._mixup_alpha < 1e-6:
+            lamda, indices = None, None
+        else:
+            lamda = lamda = np.random.beta(self._mixup_alpha, self._mixup_alpha, size=targets.size(0))
+            lamda = torch.tensor(lamda, dtype=torch.float, device=targets.device)
+            indices = torch.randperm(targets.size(0), device=targets.device)
         def closure():
             self.optimizer.zero_grad()
-            outputs = self.model(*inputs)
-            loss = self.criterion(outputs, targets)
+            outputs = self.model(*inputs, lamda=lamda, indices=indices)
+            loss = self._mixup_criterion(outputs, targets, lamda=lamda, indices=indices)
             loss.backward()
             nn.utils.clip_grad_norm_(self.params, self._clip_norm)
             return outputs, loss
@@ -49,5 +57,14 @@ class Trainer:
 
     def evaluate(self, inputs, targets):
         outputs = self.model(*inputs)
-        loss = self.criterion(outputs, targets)
+        loss = self.criterion(outputs, targets).mean()
         return outputs, loss
+
+    def _mixup_criterion(self, outputs, targets, lamda=None, indices=None):
+        if lamda is None:
+            return self.criterion(outputs, targets).mean()
+        outputs_a, outputs_b = outputs, outputs[indices, :]
+        targets_a, targets_b = targets, targets[indices]
+        loss_a = self.criterion(outputs_a, targets_a)
+        loss_b = self.criterion(outputs_b, targets_b)
+        return torch.mean(lamda * loss_a + (1 - lamda) * loss_b)

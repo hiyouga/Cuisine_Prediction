@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .layers import DynamicLSTM
-from .layers import NoQueryAttention
+from .layers import NoQueryAttention, mixup_process
 
 
 class TextRNN(nn.Module):
@@ -28,7 +28,7 @@ class TextRNN(nn.Module):
         else:
             self.maxpool = nn.AdaptiveMaxPool1d(1)
 
-    def forward(self, word, word_pos):
+    def forward(self, word, word_pos, lamda=None, indices=None):
         word_emb = self.dropout(self.word_embed(word))
         pos_emb = self.dropout(self.pos_embed(word_pos))
         word_feat = torch.cat((word_emb, pos_emb), dim=-1)
@@ -38,6 +38,8 @@ class TextRNN(nn.Module):
             out = self.attention(out).squeeze(1)
         else:
             out = self.dropout(out.sum(dim=1).div(text_len.float().unsqueeze(-1)))
+        if lamda is not None:
+            out = mixup_process(out, lamda, indices)
         out = self.linear(out)
         return out
 

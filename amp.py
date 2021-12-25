@@ -52,9 +52,8 @@ class AMP(Optimizer):
                 for p in group['params']:
                     if p.grad is not None:
                         if i == 0:
-                            dev = group['inner_lr'] * p.grad
-                        else:
-                            dev = self.state[p]['dev'] + group['inner_lr'] * p.grad
+                            self.state[p]['dev'] = torch.zeros_like(p.grad)
+                        dev = self.state[p]['dev'] + group['inner_lr'] * p.grad
                         clip_coef = group['epsilon'] / (dev.norm() + 1e-12)
                         dev = clip_coef * dev if clip_coef < 1 else dev
                         p.sub_(self.state[p]['dev']).add_(dev) # update "theta" with "theta+delta"

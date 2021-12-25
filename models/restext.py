@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .layers import NoQueryAttention
+from .layers import NoQueryAttention, mixup_process
 
 
 class ConvBlock(nn.Module):
@@ -70,7 +70,7 @@ class ResText(nn.Module):
         else:
             self.maxpool = nn.AdaptiveMaxPool1d(1)
 
-    def forward(self, word, word_pos):
+    def forward(self, word, word_pos, lamda=None, indices=None):
         word_emb = self.dropout(self.word_embed(word))
         pos_emb = self.dropout(self.pos_embed(word_pos))
         word_feat = torch.cat((word_emb, pos_emb), dim=-1).transpose(1, 2)
@@ -81,6 +81,8 @@ class ResText(nn.Module):
             out = self.attention(out.transpose(1, 2)).squeeze(1)
         else:
             out = self.dropout(self.maxpool(out).squeeze(-1))
+        if lamda is not None:
+            out = mixup_process(out, lamda, indices)
         out = self.linear(out)
         return out
 

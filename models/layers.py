@@ -2,6 +2,13 @@ import torch
 import torch.nn as nn
 
 
+def mixup_process(inputs, lamda, indices):
+    shape = [-1] + [1] * (len(inputs.shape) - 1)
+    lamda = lamda.view(*shape)
+    mixed_inputs = lamda * inputs + (1 - lamda) * inputs[indices, :]
+    return mixed_inputs
+
+
 class DynamicLSTM(nn.Module):
     """
     LSTM which can hold variable length sequence, use like TensorFlow's RNN(input, length...).
