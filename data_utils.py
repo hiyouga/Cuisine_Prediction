@@ -3,7 +3,7 @@ import json
 import pickle
 import random
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 
 
 class Vocab:
@@ -201,11 +201,13 @@ def build_tokenizer(fnames):
     return tokenizer
 
 
-def load_data(batch_size, no_data_aug):
-    tokenizer = build_tokenizer(fnames=['train.json', 'dev.json'])
+def load_data(batch_size, dev_ratio, no_data_aug):
+    tokenizer = build_tokenizer(fnames=['train.json'])
     embedding_matrix = build_embedding_matrix(tokenizer.vocab['word'])
     trainset = FoodDataset('train.json', tokenizer, split='train', no_data_aug=no_data_aug)
-    devset = FoodDataset('dev.json', tokenizer, split='dev', no_data_aug=True)
+    dev_len = int(len(trainset) * dev_ratio) # split validation set
+    assert dev_len != 0
+    trainset, devset = random_split(trainset, (len(trainset)-dev_len, dev_len))
     testset = FoodDataset('test.json', tokenizer, split='test', no_data_aug=True)
     train_dataloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, pin_memory=True)
     dev_dataloader = DataLoader(devset, batch_size=batch_size, shuffle=False, pin_memory=True)

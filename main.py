@@ -22,7 +22,7 @@ class Instructor:
         self.logger.addHandler(logging.StreamHandler(sys.stdout))
         self.logger.addHandler(logging.FileHandler(os.path.join('logs', args.log_name)))
         self._print_args()
-        dataloaders = load_data(batch_size=args.batch_size, no_data_aug=args.no_data_aug)
+        dataloaders = load_data(batch_size=args.batch_size, dev_ratio=args.dev_ratio, no_data_aug=args.no_data_aug)
         self.train_dataloader, self.dev_dataloader, self.test_dataloader, self.tokenizer, embedding_matrix = dataloaders
         configs = {
             'num_classes': len(self.tokenizer.vocab['label']),
@@ -169,6 +169,9 @@ if __name__ == '__main__':
         'dualtextcnn_256_345': ['word', 'phrase', 'word_pos', 'phrase_pos']
     }
     parser = argparse.ArgumentParser(description='Trainer', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    ''' dataset '''
+    parser.add_argument('--dev_ratio', type=float, default=0.1, help='Ratio between 0 and 1 for spliting development set.')
+    parser.add_argument('--no_data_aug', default=False, action='store_true', help='Disable data augmentation.')
     ''' model '''
     parser.add_argument('--model_name', type=str, default='textcnn_256_345', choices=model_names, help='Classifier model architecture.')
     parser.add_argument('--position_dim', type=int, default=10, help='Dimension of position embedding.')
@@ -184,7 +187,6 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate.')
     parser.add_argument('--decay', type=float, default=1e-4, help='Weight decay (L2 penalty).')
     parser.add_argument('--clip_norm', type=int, default=50, help='Maximum norm of gradients.')
-    parser.add_argument('--no_data_aug', default=False, action='store_true', help='Disable data augmentation.')
     ''' ensemble '''
     parser.add_argument('--ensemble', type=str, default=None, help='Models for ensembling.')
     ''' environment '''
