@@ -131,7 +131,6 @@ class MultiHeadAttention(nn.Module):
             q = q.unsqueeze(1) # (batch_size, q_len, embed_dim)
         if len(k.shape) == 2:
             k = k.unsqueeze(1) # (batch_size, k_len, embed_dim)
-        residual = v if v is not None else k
         mb_size = k.size(0)
         k_len = k.size(1)
         q_len = q.size(1)
@@ -168,7 +167,6 @@ class MultiHeadAttention(nn.Module):
         out = out.contiguous().view(mb_size, q_len, self.num_heads * self.hidden_dim)
         out = self.proj(out) # (batch_size, q_len, output_dim)
         out = self.dropout(out)
-        out += residual
         out = self.layernorm(out)
         if self.verbose:
             return out, attn
