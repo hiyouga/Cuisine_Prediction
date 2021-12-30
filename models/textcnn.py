@@ -9,14 +9,17 @@ class TextCNN(nn.Module):
         super(TextCNN, self).__init__()
 
         WN, WD = configs['embedding_matrix'].shape
-        PL = configs['word_maxlen']+1
+        PN = configs['word_maxlen']+1
         PD = configs['position_dim']
         KN = kernel_num
         KS = kernel_sizes
         C = configs['num_classes']
 
-        self.word_embed = nn.Embedding.from_pretrained(torch.tensor(configs['embedding_matrix'], dtype=torch.float))
-        self.pos_embed = nn.Embedding(PL, PD, padding_idx=0)
+        if not configs['no_pretrain']:
+            self.word_embed = nn.Embedding.from_pretrained(torch.tensor(configs['embedding_matrix'], dtype=torch.float))
+        else:
+            self.word_embed = nn.Embedding(WN, WD, padding_idx=0)
+        self.pos_embed = nn.Embedding(PN, PD, padding_idx=0)
         self.conv = nn.ModuleList([
             nn.Sequential(
                 nn.Conv1d(WD+PD, KN, K, padding=K//2, bias=True),
@@ -39,7 +42,7 @@ class TextCNN(nn.Module):
         word_feat = torch.cat((word_emb, pos_emb), dim=-1).transpose(1, 2)
         out = list()
         for conv in self.conv:
-            cnn_out_i = self.dropout(conv(word_feat))
+            cnn_out_i = conv(word_feat)
             if hasattr(self, 'attention'):
                 out_i = self.attention(cnn_out_i.transpose(1, 2)).squeeze(1)
             else:
@@ -52,25 +55,5 @@ class TextCNN(nn.Module):
         return out
 
 
-def textcnn_64_345(configs):
-    return TextCNN(64, [3,4,5], configs)
-
-
-def textcnn_128_345(configs):
-    return TextCNN(128, [3,4,5], configs)
-
-
-def textcnn_256_135(configs):
-    return TextCNN(256, [1,3,5], configs)
-
-
-def textcnn_256_234(configs):
-    return TextCNN(256, [2,3,4], configs)
-
-
-def textcnn_256_345(configs):
+def textcnn(configs):
     return TextCNN(256, [3,4,5], configs)
-
-
-def textcnn_512_345(configs):
-    return TextCNN(512, [3,4,5], configs)

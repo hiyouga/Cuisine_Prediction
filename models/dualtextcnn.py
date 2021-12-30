@@ -19,7 +19,10 @@ class DualTextCNN(nn.Module):
         KS = kernel_sizes
         C = configs['num_classes']
 
-        self.word_embed = nn.Embedding.from_pretrained(torch.tensor(configs['embedding_matrix'], dtype=torch.float))
+        if not configs['no_pretrain']:
+            self.word_embed = nn.Embedding.from_pretrained(torch.tensor(configs['embedding_matrix'], dtype=torch.float))
+        else:
+            self.word_embed = nn.Embedding(WN, WD, padding_idx=0)
         self.phrase_embed = nn.Embedding(PN, PD, padding_idx=0)
         self.word_pos_embed = nn.Embedding(WL, WLD, padding_idx=0)
         self.phrase_pos_embed = nn.Embedding(PL, PLD, padding_idx=0)
@@ -74,9 +77,5 @@ class DualTextCNN(nn.Module):
         return out
 
 
-def dualtextcnn_128_345(configs):
-    return DualTextCNN(128, [3,4,5], configs)
-
-
-def dualtextcnn_256_345(configs):
+def dualtextcnn(configs):
     return DualTextCNN(256, [3,4,5], configs)

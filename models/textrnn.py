@@ -10,13 +10,16 @@ class TextRNN(nn.Module):
         super(TextRNN, self).__init__()
 
         WN, WD = configs['embedding_matrix'].shape
-        PL = configs['word_maxlen']+1
+        PN = configs['word_maxlen']+1
         PD = configs['position_dim']
         HD = hidden_dim
         C = configs['num_classes']
 
-        self.word_embed = nn.Embedding.from_pretrained(torch.tensor(configs['embedding_matrix'], dtype=torch.float))
-        self.pos_embed = nn.Embedding(PL, PD, padding_idx=0)
+        if not configs['no_pretrain']:
+            self.word_embed = nn.Embedding.from_pretrained(torch.tensor(configs['embedding_matrix'], dtype=torch.float))
+        else:
+            self.word_embed = nn.Embedding(WN, WD, padding_idx=0)
+        self.pos_embed = nn.Embedding(PN, PD, padding_idx=0)
         self.rnn = DynamicLSTM(WD+PD, HD, num_layers=num_layers, batch_first=True, bidirectional=True, rnn_type=rnn_type)
         self.linear = nn.Linear(2 * HD, C)
         self.dropout = nn.Dropout(configs['dropout'])
@@ -44,17 +47,5 @@ class TextRNN(nn.Module):
         return out
 
 
-def textrnn_100(configs):
-    return TextRNN('RNN', 1, 100, configs)
-
-
-def textgru_100(configs):
-    return TextRNN('GRU', 1, 100, configs)
-
-
-def textgru_200(configs):
-    return TextRNN('GRU', 1, 200, configs)
-
-
-def textgru_300(configs):
-    return TextRNN('GRU', 1, 300, configs)
+def textrnn(configs):
+    return TextRNN('RNN', 1, 300, configs)

@@ -33,7 +33,8 @@ class Instructor:
             'position_dim': args.position_dim,
             'dropout': args.dropout,
             'score_function': args.score_function,
-            'num_heads': args.num_heads
+            'num_heads': args.num_heads,
+            'no_pretrain': args.no_pretrain
         }
         self.logger.info('=> creating model')
         self.trainer = Trainer(args.model_class(configs), args)
@@ -147,40 +148,66 @@ class Instructor:
             f.write('\n'.join([f"{cid} {pred}" for cid, pred in zip(all_cid, all_pred)]))
         self.logger.info(f"submission result saved: ensemble_{len(self.args.ensemble)}_{self.args.timestamp}.txt")
 
+    @torch.no_grad()
+    def t_sne(self):
+        import matplotlib.pyplot as plt
+        from sklearn.manifold import TSNE
+        plt.switch_backend('Agg')
+        n_batch = len(self.train_dataloader)
+        all_feature, all_label = list(), list()
+        def hook_fn(model, input):
+            all_feature.append(input[0].cpu().numpy())
+        hook = self.trainer.model.linear.register_forward_pre_hook(hook_fn)
+        self.trainer.eval_mode()
+        self.trainer.load_state_dict(torch.load(os.path.join('state_dict', f"{self.args.checkpoint}.pt"),
+                                                map_location=self.args.device))
+        for i_batch, sample_batched in enumerate(self.train_dataloader):
+            inputs = [sample_batched[col].to(self.args.device) for col in self.args.inputs_cols]
+            targets = sample_batched['target'].to(self.args.device)
+            _ = self.trainer.evaluate(inputs, targets)
+            all_label.append(targets.cpu().numpy())
+            if not self.args.no_bar:
+                ratio = int((i_batch+1)*50/n_batch) # process bar
+                print(f"[{'>'*ratio}{' '*(50-ratio)}] {i_batch+1}/{n_batch} {(i_batch+1)*100/n_batch:.2f}%", end='\r')
+        if not self.args.no_bar:
+            print()
+        hook.remove()
+        all_feature = np.concatenate(all_feature, axis=0)[:200, :]
+        all_label = np.concatenate(all_label, axis=0)[:200]
+        tsne = TSNE(n_components=2, init='pca', random_state=0)
+        data = tsne.fit_transform(all_feature)
+        plt.figure()
+        x_min, x_max = np.min(data, axis=0), np.max(data, axis=0)
+        data = (data - x_min) / (x_max - x_min) * 0.9 + 0.05
+        for i in range(data.shape[0]):
+            color = plt.cm.rainbow(all_label[i] / 19)
+            plt.text(data[i, 0], data[i, 1], str(all_label[i]), backgroundcolor=color, fontsize=8)
+        plt.xticks([])
+        plt.yticks([])
+        plt.savefig(f"vis_{self.args.timestamp}.pdf", format='pdf', transparent=True, dpi=300, bbox_inches='tight')
+
 
 if __name__ == '__main__':
 
     model_names = sorted(name for name in models.__dict__ if name.islower() and not name.startswith('__') and callable(models.__dict__[name]))
     input_colses = {
-        'textcnn_64_345': ['word', 'word_pos'],
-        'textcnn_128_345': ['word', 'word_pos'],
-        'textcnn_256_345': ['word', 'word_pos'],
-        'textcnn_512_345': ['word', 'word_pos'],
-        'textcnn_256_135': ['word', 'word_pos'],
-        'textcnn_256_234': ['word', 'word_pos'],
-        'textrnn_100': ['word', 'word_pos'],
-        'textgru_100': ['word', 'word_pos'],
-        'textgru_200': ['word', 'word_pos'],
-        'textgru_300': ['word', 'word_pos'],
-        'restext_128_1': ['word', 'word_pos'],
-        'restext_256_1': ['word', 'word_pos'],
-        'restext_256_2': ['word', 'word_pos'],
-        'dualtextcnn_128_345': ['word', 'phrase', 'word_pos', 'phrase_pos'],
-        'dualtextcnn_256_345': ['word', 'phrase', 'word_pos', 'phrase_pos']
+        'textcnn': ['word', 'word_pos'],
+        'textrnn': ['word', 'word_pos'],
+        'restext': ['word', 'word_pos'],
+        'dualtextcnn': ['word', 'phrase', 'word_pos', 'phrase_pos']
     }
     parser = argparse.ArgumentParser(description='Trainer', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ''' dataset '''
-    parser.add_argument('--dev_ratio', type=float, default=0.1, help='Ratio between 0 and 1 for spliting development set.')
+    parser.add_argument('--dev_ratio', type=float, default=0.05, help='Ratio between 0 and 1 for spliting development set.')
     parser.add_argument('--no_data_aug', default=False, action='store_true', help='Disable data augmentation.')
     ''' model '''
-    parser.add_argument('--model_name', type=str, default='textcnn_256_345', choices=model_names, help='Classifier model architecture.')
+    parser.add_argument('--model_name', type=str, default='textcnn', choices=model_names, help='Classifier model architecture.')
     parser.add_argument('--position_dim', type=int, default=10, help='Dimension of position embedding.')
     parser.add_argument('--score_function', type=str, default=None, help='Score function for attention layer.')
     parser.add_argument('--num_heads', type=int, default=1, help='Number of heads in multihead attention layer.')
     parser.add_argument('--dropout', type=float, default=0, help='Dropout rate.')
+    parser.add_argument('--no_pretrain', default=False, action='store_true', help='Do not use pretrained embeddings.')
     ''' optimization '''
-    parser.add_argument('--optimizer', type=str, default='adam', choices=['sgd', 'adam'], help='Optimizer.')
-    parser.add_argument('--epsilon', type=float, default=1e-5, help='Perturbation radius for the AMP optimizer.')
     parser.add_argument('--mixup_alpha', type=float, default=1.0, help='Alpha parameter for mixup.')
     parser.add_argument('--num_epoch', type=int, default=200, help='Number of epochs to train.')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size.')
@@ -189,6 +216,8 @@ if __name__ == '__main__':
     parser.add_argument('--clip_norm', type=int, default=50, help='Maximum norm of gradients.')
     ''' ensemble '''
     parser.add_argument('--ensemble', type=str, default=None, help='Models for ensembling.')
+    ''' t-SNE '''
+    parser.add_argument('--checkpoint', type=str, default=None, help='Model for t-SNE visualization.')
     ''' environment '''
     parser.add_argument('--device', type=str, default=None, choices=['cpu', 'cuda'], help='Selected device.')
     parser.add_argument('--seed', type=int, default=None, help='Random seed.')
@@ -216,5 +245,7 @@ if __name__ == '__main__':
     ins = Instructor(args)
     if args.ensemble:
         ins.ensemble()
+    elif args.checkpoint:
+        ins.t_sne()
     else:
         ins.run()

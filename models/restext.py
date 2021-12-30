@@ -45,13 +45,16 @@ class ResText(nn.Module):
         super(ResText, self).__init__()
 
         WN, WD = configs['embedding_matrix'].shape
-        PL = configs['word_maxlen']+1
+        PN = configs['word_maxlen']+1
         PD = configs['position_dim']
         KN = kernel_num
         C = configs['num_classes']
 
-        self.word_embed = nn.Embedding.from_pretrained(torch.tensor(configs['embedding_matrix'], dtype=torch.float))
-        self.pos_embed = nn.Embedding(PL, PD, padding_idx=0)
+        if not configs['no_pretrain']:
+            self.word_embed = nn.Embedding.from_pretrained(torch.tensor(configs['embedding_matrix'], dtype=torch.float))
+        else:
+            self.word_embed = nn.Embedding(WN, WD, padding_idx=0)
+        self.pos_embed = nn.Embedding(PN, PD, padding_idx=0)
         self.conv1 = nn.Sequential(
             ConvBlock(WD+PD, KN),
             nn.BatchNorm1d(KN),
@@ -87,13 +90,5 @@ class ResText(nn.Module):
         return out
 
 
-def restext_128_1(configs):
-    return ResText(128, 1, configs)
-
-
-def restext_256_1(configs):
+def restext(configs):
     return ResText(256, 1, configs)
-
-
-def restext_256_2(configs):
-    return ResText(256, 2, configs)
