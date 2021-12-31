@@ -2,6 +2,8 @@
 
 ![GitHub](https://img.shields.io/github/license/hiyouga/cuisine_prediction)
 
+The technical report can be found [here](technical_report.pdf).
+
 ## Requirement
 
 - Python >= 3.7
